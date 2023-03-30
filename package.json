@@ -20,6 +20,10 @@
     "keywords": [],
     "author": "Aden Pun",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/adenpun/dollphin.git"
+    },
     "dependencies": {
         "bson": "^5.1.0"
     },

@@ -6,4 +6,9 @@ export default defineBuildConfig({
     dependencies: Object.keys(pkg.dependencies),
     devDependencies: Object.keys(pkg.devDependencies),
     failOnWarn: false,
+    rollup: {
+        esbuild: {
+            minify: true,
+        },
+    },
 });

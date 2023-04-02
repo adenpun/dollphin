@@ -34,3 +34,7 @@ database.writeDocument(
 );
 
 console.log(database.readDocument("users/2"));
+
+// console.log(database.toBSON());
+
+database.updateDatabase();

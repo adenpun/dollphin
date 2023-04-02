@@ -1,36 +1,22 @@
-import { Worker, isMainThread, workerData } from "worker_threads";
+import deepmerge from "deepmerge";
+import { BSON } from "BSON";
+import { Worker, isMainThread, workerData, parentPort } from "worker_threads";
 import { fileURLToPath } from "url";
 import { Dollphin } from "../dist/index.mjs";
 import path from "path";
+import { writeFileSync } from "fs";
 
 const database = new Dollphin({
     storingPath: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".dollphin", "db"),
-    autoWrite: false,
-    fs: "fs",
 });
 
-if (isMainThread) {
-    database.createCollection("test/");
+database.createCollection("extreme");
 
-    // database.updateDatabase();
-
-    let workers = [];
-
-    for (let i = 0; i < 4; i++) {
-        let worker = new Worker(fileURLToPath(import.meta.url), {
-            workerData: {
-                index: i,
-            },
-        });
-        // workers.push(worker);
-    }
-} else {
-    console.log(workerData.index);
-    for (let i = workerData.index * 1000; i < workerData.index * 1000 + 1000; i++) {
-        database.writeDocument("test/" + i, {
-            index: i,
-            indexString: i.toString(),
-        });
-    }
-    database.updateDatabase();
+for (let i = 0; i < 1000; i++) {
+    database.writeDocument(`extreme/${Math.random() + i}`, {
+        data: Math.random().toString(),
+        number: i,
+    });
 }
+
+database.updateDatabase();

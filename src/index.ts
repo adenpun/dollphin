@@ -1,6 +1,7 @@
-import { BSON } from "bson";
+import { BSON, ObjectId } from "bson";
 import merge from "deepmerge";
 import { Volume } from "memfs";
+import { randomUUID } from "node:crypto";
 import fs, { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -10,8 +11,6 @@ interface IDollphinOptions {
     name: string;
     /** Path to data */
     storingPath: string;
-    fs?: "fs" | "vfs" | "both";
-    autoWrite?: boolean;
 }
 
 interface IWriteDocumentOptions {
@@ -26,29 +25,31 @@ export class Dollphin {
     public static readonly DEFAULT_OPTIONS: IDollphinOptions = {
         name: "Dollphin",
         storingPath: "./.dollphin/db",
-        fs: "both",
-        autoWrite: true,
     };
 
     public options: IDollphinOptions;
-    public fs: typeof fs;
+    public fs: InstanceType<typeof Volume>;
 
     private m_updatingDb: boolean = false;
 
     public constructor(p_options?: Partial<IDollphinOptions>) {
         this.options = merge(Dollphin.DEFAULT_OPTIONS, p_options ?? {});
-        if (this.options.fs === "fs") this.fs = fs;
-        else if (existsSync(path.resolve(this.options.storingPath, "0")))
-            this.fs = Volume.fromJSON(
-                BSON.deserialize(readFileSync(path.resolve(this.options.storingPath, "0")))
-            ) as any;
-        else this.fs = new Volume() as any;
+        if (existsSync(path.resolve(this.options.storingPath, "0"))) {
+            let deserialized = BSON.deserialize(
+                readFileSync(path.resolve(this.options.storingPath, "0"))
+            );
+
+            Object.keys(deserialized).forEach((k) => {
+                deserialized[k] = BSON.serialize(deserialized[k]).toString();
+            });
+
+            this.fs = Volume.fromJSON(deserialized);
+        } else this.fs = new Volume();
     }
 
     public createCollection(p_path: string): void {
         this.fs.mkdirSync(path.posix.normalize("/" + p_path), { recursive: true });
 
-        if (this.options.autoWrite) this.updateDatabase();
         return;
     }
 
@@ -56,7 +57,6 @@ export class Dollphin {
         if (this.fs.statSync(path.posix.normalize("/" + p_path)).isFile())
             this.fs.rmSync(path.posix.normalize("/" + p_path));
 
-        if (this.options.autoWrite) this.updateDatabase();
         return;
     }
 
@@ -74,17 +74,16 @@ export class Dollphin {
                 force: true,
             });
 
-        if (this.options.autoWrite) this.updateDatabase();
         return;
     }
 
     public readCollection(p_path: string): string[] {
-        return this.fs.readdirSync(path.posix.normalize("/" + p_path));
+        return this.fs.readdirSync(path.posix.normalize("/" + p_path)) as string[];
     }
 
     public readDocument<T extends BSON.Document>(p_path: string): T {
         return BSON.deserialize(
-            Buffer.from(this.fs.readFileSync(path.posix.normalize("/" + p_path)))
+            this.fs.readFileSync(path.posix.normalize("/" + p_path)) as Uint8Array
         ) as T;
     }
 
@@ -95,31 +94,42 @@ export class Dollphin {
     ): void {
         let data: Uint8Array;
 
-        if (p_options?.merge) data = BSON.serialize(merge(this.readDocument(p_path), p_data));
-        else data = BSON.serialize(p_data);
-        this.fs.writeFileSync(path.posix.normalize("/" + p_path), data);
+        if (p_options?.merge)
+            data = BSON.serialize(
+                merge(this.readDocument(p_path), { ...p_data, _id: new ObjectId() })
+            );
+        else data = BSON.serialize({ ...p_data, _id: new ObjectId() });
+        this.fs.writeFileSync(path.posix.normalize("/" + p_path), data, {
+            encoding: "buffer",
+        });
 
-        if (this.options.autoWrite) this.updateDatabase();
         return;
     }
 
+    public toJSON(): Record<string, any> {
+        let json: Record<string, any> = this.fs.toJSON();
+
+        Object.keys(json).forEach((k) => {
+            json[k] = this.readDocument(k);
+        });
+
+        return json;
+    }
+
+    public toBSON(): BSON.Document {
+        return BSON.serialize(this.toJSON());
+    }
+
     public updateDatabase(): void {
-        if (this.m_updatingDb === true) throw new Error("Database is currently being updated.");
-        if (this.options.fs === "vfs" || this.options.fs === "both") {
-            this.m_updatingDb = true;
-            // if () throw new Error("Database is currently being updated.");
-            fs.accessSync(path.resolve(this.options.storingPath));
-            mkdir(path.resolve(this.options.storingPath), {
-                recursive: true,
-            }).then(() => {
-                writeFile(
-                    path.resolve(this.options.storingPath, "0"),
-                    BSON.serialize((this.fs as any).toJSON())
-                ).then(() => {
-                    this.m_updatingDb = false;
-                });
-            });
-        }
+        let json = this.toJSON();
+
+        console.log(BSON.calculateObjectSize(json));
+
+        mkdir(path.resolve(this.options.storingPath), {
+            recursive: true,
+        }).then(() => {
+            writeFile(path.resolve(this.options.storingPath, "0"), BSON.serialize(json));
+        });
 
         return;
     }

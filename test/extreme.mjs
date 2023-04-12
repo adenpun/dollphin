@@ -14,7 +14,7 @@ database.createCollection("extreme");
 
 for (let i = 0; i < 1000; i++) {
     database.writeDocument(`extreme/${Math.random() + i}`, {
-        data: Math.random().toString(),
+        data: Math.random(),
         number: i,
     });
 }
